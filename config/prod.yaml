@@ -1,0 +1,8 @@
+env: prod
+db:
+  db_url: ${DB_URL}
+http_server:
+  address: "0.0.0.0:8082"
+  timeout: 4s
+  idle_timeout: 60s
+  user: ${HTTP_SERVER_USER}
