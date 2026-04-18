@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"job-queue/internal/config"
-	"job-queue/internal/lib/logger/handlers/setuplogger"
-	"job-queue/internal/lib/logger/sl"
+	"job-queue/internal/logger/handlers/setuplogger"
+	"job-queue/internal/logger/sl"
 	"job-queue/internal/repository/postgres"
 	"job-queue/internal/worker"
 	"log/slog"
@@ -15,7 +15,11 @@ import (
 )
 
 func main() {
-	godotenv.Load(".env")
+	envPath := os.Getenv("ENV_FILE")
+	if envPath == "" {
+		envPath = ".env"
+	}
+	godotenv.Load(envPath)
 
 	cfg := config.MustLoad()
 
@@ -23,8 +27,10 @@ func main() {
 
 	log.Info("starting worker", slog.String("env", cfg.Env))
 
-	storage, err := postgres.New(cfg.DB.DBUrl)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	storage, err := postgres.New(ctx, cfg.DB.DBUrl)
 	if err != nil {
 		log.Error("failed to connect", sl.Err(err))
 		os.Exit(1)
@@ -36,5 +42,5 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	w.Run(ctx)
+	w.Run(ctx, cfg)
 }

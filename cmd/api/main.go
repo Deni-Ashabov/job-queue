@@ -1,17 +1,20 @@
 package main
 
 import (
+	"context"
+	del "job-queue/internal/api/http/handlers/job-queue/delete"
+	"job-queue/internal/api/http/handlers/job-queue/get"
+	"job-queue/internal/api/http/handlers/job-queue/save"
+	"job-queue/internal/api/http/middleware/logger"
 	"job-queue/internal/config"
-	del "job-queue/internal/http-server/handlers/job-queue/delete"
-	"job-queue/internal/http-server/handlers/job-queue/get"
-	"job-queue/internal/http-server/handlers/job-queue/save"
-	"job-queue/internal/http-server/middleware/logger"
-	"job-queue/internal/lib/logger/handlers/setuplogger"
-	"job-queue/internal/lib/logger/sl"
+	"job-queue/internal/logger/handlers/setuplogger"
+	"job-queue/internal/logger/sl"
 	"job-queue/internal/repository/postgres"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -19,7 +22,11 @@ import (
 )
 
 func main() {
-	godotenv.Load(".env")
+	envPath := os.Getenv("ENV_FILE")
+	if envPath == "" {
+		envPath = ".env"
+	}
+	godotenv.Load(envPath)
 
 	cfg := config.MustLoad()
 
@@ -28,7 +35,10 @@ func main() {
 	log.Info("starting job queue", slog.String("env", cfg.Env))
 	log.Debug("debug messages are enabled")
 
-	storage, err := postgres.New(cfg.DB.DBUrl)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	storage, err := postgres.New(ctx, cfg.DB.DBUrl)
 	if err != nil {
 		log.Error("failed to connect", sl.Err(err))
 		os.Exit(1)
@@ -64,9 +74,19 @@ func main() {
 		IdleTimeout:  cfg.HTTPServer.IdleTimeout,
 	}
 
-	if err := srv.ListenAndServe(); err != nil {
-		log.Error("failed to start server")
-	}
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt)
 
-	log.Error("server stopped")
+	go func() {
+		<-interrupt
+		log.Info("shutting down server...")
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		srv.Shutdown(ctx)
+	}()
+
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Error("failed to start server", sl.Err(err))
+		os.Exit(1)
+	}
 }

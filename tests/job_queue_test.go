@@ -3,8 +3,8 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
-	"job-queue/internal/http-server/handlers/job-queue/save"
-	"job-queue/internal/repository/postgres"
+	"job-queue/internal/api/http/handlers/job-queue/save"
+	"job-queue/internal/models"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,7 +21,6 @@ const (
 
 func TestMain(m *testing.M) {
 	wd, err := os.Getwd()
-
 	if err != nil {
 		panic(err)
 	}
@@ -130,7 +129,7 @@ func TestURLShortener_SaveJob(t *testing.T) {
 			} else {
 				resp = e.POST("/job").
 					WithJSON(save.Request{
-						Queue:   postgres.QueueType(tc.queue),
+						Queue:   models.QueueType(tc.queue),
 						Payload: tc.payload,
 					}).
 					WithBasicAuth(

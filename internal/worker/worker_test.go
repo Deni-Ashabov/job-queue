@@ -1,23 +1,27 @@
 package worker_test
 
 import (
+	"context"
 	"encoding/json"
-	"job-queue/internal/lib/logger/handlers/slogdiscard"
-	"job-queue/internal/repository/postgres"
+	"job-queue/internal/domain/job"
+	"job-queue/internal/logger/handlers/slogdiscard"
+	"job-queue/internal/models"
 	"job-queue/internal/worker"
 	"job-queue/internal/worker/mocks"
 	"testing"
+
+	"github.com/stretchr/testify/mock"
 )
 
 func TestProcessJob(t *testing.T) {
 	cases := []struct {
 		name   string
-		job    postgres.Job
-		status postgres.JobStatus
+		job    job.Job
+		status models.JobStatus
 	}{
 		{
 			name: "email success",
-			job: postgres.Job{
+			job: job.Job{
 				ID:    1,
 				Queue: "emails",
 				Payload: json.RawMessage(`{
@@ -26,20 +30,20 @@ func TestProcessJob(t *testing.T) {
 					"body":"c"
 				}`),
 			},
-			status: postgres.StatusDone,
+			status: models.StatusDone,
 		},
 		{
 			name: "email invalid json",
-			job: postgres.Job{
+			job: job.Job{
 				ID:      2,
 				Queue:   "emails",
 				Payload: json.RawMessage(`invalid json`),
 			},
-			status: postgres.StatusFailed,
+			status: models.StatusFailed,
 		},
 		{
 			name: "payment success",
-			job: postgres.Job{
+			job: job.Job{
 				ID:    3,
 				Queue: "payment",
 				Payload: json.RawMessage(`{
@@ -47,20 +51,20 @@ func TestProcessJob(t *testing.T) {
 					"amount":"100"
 				}`),
 			},
-			status: postgres.StatusDone,
+			status: models.StatusDone,
 		},
 		{
 			name: "payment invalid json",
-			job: postgres.Job{
+			job: job.Job{
 				ID:      4,
 				Queue:   "payment",
 				Payload: json.RawMessage(`invalid json`),
 			},
-			status: postgres.StatusFailed,
+			status: models.StatusFailed,
 		},
 		{
 			name: "notification success",
-			job: postgres.Job{
+			job: job.Job{
 				ID:    5,
 				Queue: "notification",
 				Payload: json.RawMessage(`{
@@ -68,25 +72,25 @@ func TestProcessJob(t *testing.T) {
 					"text":"hello"
 				}`),
 			},
-			status: postgres.StatusDone,
+			status: models.StatusDone,
 		},
 		{
 			name: "notification invalid json",
-			job: postgres.Job{
+			job: job.Job{
 				ID:      6,
 				Queue:   "notification",
 				Payload: json.RawMessage(`invalid json`),
 			},
-			status: postgres.StatusFailed,
+			status: models.StatusFailed,
 		},
 		{
 			name: "unknown queue",
-			job: postgres.Job{
+			job: job.Job{
 				ID:      7,
 				Queue:   "unknown",
 				Payload: json.RawMessage(`{}`),
 			},
-			status: postgres.StatusFailed,
+			status: models.StatusFailed,
 		},
 	}
 
@@ -97,14 +101,17 @@ func TestProcessJob(t *testing.T) {
 			t.Parallel()
 
 			storage := mocks.NewStorage(t)
-			w := worker.New(storage, slogdiscard.NewDiscardLogger())
+			w := worker.New(storage, slogdiscard.Noop())
 
 			storage.On("ChangeStatus",
+				mock.MatchedBy(func(ctx context.Context) bool {
+					return ctx != nil
+				}),
 				tc.job.ID,
 				tc.status,
 			).Return(nil).Once()
 
-			w.ProcessJob(tc.job)
+			w.ProcessJob(context.Background(), tc.job)
 
 			storage.AssertExpectations(t)
 		})

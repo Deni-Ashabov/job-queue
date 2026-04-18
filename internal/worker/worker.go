@@ -3,21 +3,24 @@ package worker
 import (
 	"context"
 	"encoding/json"
-	"job-queue/internal/lib/logger/sl"
-	"job-queue/internal/repository/postgres"
+	"job-queue/internal/config"
+	"job-queue/internal/domain/job"
+	"job-queue/internal/dto"
+	"job-queue/internal/logger/sl"
+	"job-queue/internal/models"
 	"log/slog"
 	"time"
 )
 
 type Storage interface {
-	FetchPendingJobs() ([]postgres.Job, error)
-	ChangeStatus(id int64, status postgres.JobStatus) error
+	FetchPendingJobs(ctx context.Context) ([]job.Job, error)
+	ChangeStatus(ctx context.Context, jobID int64, status models.JobStatus) error
 }
 
 type Worker struct {
 	storage  Storage
 	log      *slog.Logger
-	handlers map[string]func(postgres.Job) error
+	handlers map[string]func(job.Job) error
 }
 
 func New(storage Storage, log *slog.Logger) *Worker {
@@ -26,7 +29,7 @@ func New(storage Storage, log *slog.Logger) *Worker {
 		log:     log,
 	}
 
-	w.handlers = map[string]func(postgres.Job) error{
+	w.handlers = map[string]func(job.Job) error{
 		"emails":       w.ProcessEmailJob,
 		"payment":      w.processPaymentJob,
 		"notification": w.processNotificationJob,
@@ -35,13 +38,11 @@ func New(storage Storage, log *slog.Logger) *Worker {
 	return w
 }
 
-func (w *Worker) Run(ctx context.Context) {
-	const workersCount = 5
+func (w *Worker) Run(ctx context.Context, cfg *config.Config) {
+	jobsChan := make(chan job.Job, cfg.JobsBufferSize)
 
-	jobsChan := make(chan postgres.Job, 10)
-
-	for i := 0; i < workersCount; i++ {
-		go w.workerLoop(jobsChan)
+	for i := 0; i < cfg.WorkersCount; i++ {
+		go w.workerLoop(ctx, jobsChan)
 	}
 
 	w.log.Info("worker started")
@@ -53,7 +54,7 @@ func (w *Worker) Run(ctx context.Context) {
 			return
 
 		default:
-			jobs, err := w.storage.FetchPendingJobs()
+			jobs, err := w.storage.FetchPendingJobs(ctx)
 			if err != nil {
 				w.log.Error("failed to fetch jobs", sl.Err(err))
 				time.Sleep(time.Second)
@@ -73,18 +74,18 @@ func (w *Worker) Run(ctx context.Context) {
 	}
 }
 
-func (w *Worker) workerLoop(jobs <-chan postgres.Job) {
+func (w *Worker) workerLoop(ctx context.Context, jobs <-chan job.Job) {
 	for job := range jobs {
-		w.ProcessJob(job)
+		w.ProcessJob(ctx, job)
 	}
 }
 
-func (w *Worker) ProcessJob(job postgres.Job) {
+func (w *Worker) ProcessJob(ctx context.Context, job job.Job) {
 	handler, ok := w.handlers[string(job.Queue)]
 	if !ok {
 		w.log.Error("wrong job type", slog.String("queue", string(job.Queue)))
 
-		if err := w.storage.ChangeStatus(job.ID, postgres.StatusFailed); err != nil {
+		if err := w.storage.ChangeStatus(ctx, job.ID, models.StatusFailed); err != nil {
 			w.log.Error("failed to change status", sl.Err(err))
 		}
 		return
@@ -94,23 +95,19 @@ func (w *Worker) ProcessJob(job postgres.Job) {
 	if err != nil {
 		w.log.Error("job failed", sl.Err(err))
 
-		if err := w.storage.ChangeStatus(job.ID, postgres.StatusFailed); err != nil {
+		if err := w.storage.ChangeStatus(ctx, job.ID, models.StatusFailed); err != nil {
 			w.log.Error("failed to change status", sl.Err(err))
 		}
 		return
 	}
 
-	if err := w.storage.ChangeStatus(job.ID, postgres.StatusDone); err != nil {
+	if err := w.storage.ChangeStatus(ctx, job.ID, models.StatusDone); err != nil {
 		w.log.Error("failed to change status", sl.Err(err))
 	}
 }
 
-func (w *Worker) ProcessEmailJob(job postgres.Job) error {
-	var payload struct {
-		To      string `json:"to"`
-		Subject string `json:"subject"`
-		Body    string `json:"body"`
-	}
+func (w *Worker) ProcessEmailJob(job job.Job) error {
+	var payload dto.EmailJob
 
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		w.log.Error("invalid email payload", sl.Err(err))
@@ -128,11 +125,8 @@ func (w *Worker) ProcessEmailJob(job postgres.Job) error {
 	return nil
 }
 
-func (w *Worker) processPaymentJob(job postgres.Job) error {
-	var payload struct {
-		UserID string `json:"user_id"`
-		Amount string `json:"amount"`
-	}
+func (w *Worker) processPaymentJob(job job.Job) error {
+	var payload dto.PaymentJob
 
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		w.log.Error("invalid payment payload", sl.Err(err))
@@ -150,11 +144,8 @@ func (w *Worker) processPaymentJob(job postgres.Job) error {
 	return nil
 }
 
-func (w *Worker) processNotificationJob(job postgres.Job) error {
-	var payload struct {
-		UserID string `json:"user_id"`
-		Text   string `json:"text"`
-	}
+func (w *Worker) processNotificationJob(job job.Job) error {
+	var payload dto.NotificationJob
 
 	if err := json.Unmarshal(job.Payload, &payload); err != nil {
 		w.log.Error("invalid notification payload", sl.Err(err))

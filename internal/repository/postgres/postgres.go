@@ -6,68 +6,58 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	storage "job-queue/internal/repository"
+	jobDomain "job-queue/internal/domain/job"
+	"job-queue/internal/models"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type JobStatus string
-
 const (
-	StatusPending    JobStatus = "pending"
-	StatusProcessing JobStatus = "processing"
-	StatusDone       JobStatus = "done"
-	StatusFailed     JobStatus = "failed"
-)
-
-type QueueType string
-
-const (
-	QueueEmail        QueueType = "emails"
-	QueuePayment      QueueType = "payment"
-	QueueNotification QueueType = "notification"
+	OpNew              = "repository.pgx.New"
+	OpSaveJob          = "repository.pgx.SaveJob"
+	OpGetJob           = "repository.pgx.GetJob"
+	OpDeleteJob        = "repository.pgx.DeleteJob"
+	OpChangeStatus     = "repository.pgx.ChangeStatus"
+	OpFetchPendingJobs = "repository.pgx.FetchPendingJobs"
 )
 
 type Storage struct {
 	db *pgxpool.Pool
 }
 
-type Job struct {
-	ID          int64
-	Queue       QueueType
-	Payload     json.RawMessage
-	JobStatus   string
-	AvailableAt time.Time
-	CreatedAt   time.Time
-}
-
-func New(connStr string) (*Storage, error) {
-	const op = "repository.pgx.New"
-
-	pool, err := pgxpool.New(context.Background(), connStr)
-
+func New(ctx context.Context, connStr string) (*Storage, error) {
+	pool, err := pgxpool.New(ctx, connStr)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", OpNew, err)
 	}
 
-	if err := pool.Ping(context.Background()); err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
+	const maxRetries = 5
+	const delay = 2 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		if err := pool.Ping(ctx); err == nil {
+			return &Storage{db: pool}, nil
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(delay):
+		}
 	}
 
-	return &Storage{db: pool}, nil
+	return nil, fmt.Errorf("%s: db is not reachable after retries", OpNew)
 }
 
 func (s *Storage) Close() {
 	s.db.Close()
 }
 
-func (s *Storage) SaveJob(queue QueueType, payload json.RawMessage) (Job, error) {
-	const op = "repository.pgx.SaveJob"
+func (s *Storage) SaveJob(ctx context.Context, queue models.QueueType, payload json.RawMessage) (jobDomain.Job, error) {
+	var job jobDomain.Job
 
-	var job Job
-
-	err := s.db.QueryRow(context.Background(), `
+	err := s.db.QueryRow(ctx, `
 		INSERT INTO jobs (queue, payload)
 		VALUES ($1, $2)
 		RETURNING id, queue, job_status, available_at, created_at
@@ -78,18 +68,15 @@ func (s *Storage) SaveJob(queue QueueType, payload json.RawMessage) (Job, error)
 		&job.AvailableAt,
 		&job.CreatedAt,
 	)
-
 	if err != nil {
-		return job, fmt.Errorf("%s: %w", op, err)
+		return job, fmt.Errorf("%s: %w", OpSaveJob, err)
 	}
 
 	return job, nil
 }
 
-func (s *Storage) FetchPendingJobs() ([]Job, error) {
-	const op = "repository.pgx.FetchPendingJobs"
-
-	rows, err := s.db.Query(context.Background(), `
+func (s *Storage) FetchPendingJobs(ctx context.Context) ([]jobDomain.Job, error) {
+	rows, err := s.db.Query(ctx, `
 		UPDATE jobs
 		SET job_status = 'processing'
 		WHERE id IN (
@@ -101,17 +88,16 @@ func (s *Storage) FetchPendingJobs() ([]Job, error) {
 		)
 		RETURNING id, queue, payload, job_status, available_at;
 	`)
-
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", OpFetchPendingJobs, err)
 	}
 
 	defer rows.Close()
 
-	jobs := make([]Job, 0)
+	jobs := make([]jobDomain.Job, 0)
 
 	for rows.Next() {
-		var job Job
+		var job jobDomain.Job
 
 		err := rows.Scan(
 			&job.ID,
@@ -120,7 +106,6 @@ func (s *Storage) FetchPendingJobs() ([]Job, error) {
 			&job.JobStatus,
 			&job.AvailableAt,
 		)
-
 		if err != nil {
 			return nil, err
 		}
@@ -135,34 +120,29 @@ func (s *Storage) FetchPendingJobs() ([]Job, error) {
 	return jobs, nil
 }
 
-func (s *Storage) ChangeStatus(jobID int64, status JobStatus) error {
-	const op = "repository.pgx.ChangeStatus"
-
-	res, err := s.db.Exec(context.Background(), `
+func (s *Storage) ChangeStatus(ctx context.Context, jobID int64, status models.JobStatus) error {
+	res, err := s.db.Exec(ctx, `
 		UPDATE jobs
 		SET job_status = $1
 		WHERE id = $2;
 	`, status, jobID)
-
 	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", OpChangeStatus, err)
 	}
 
 	rows := res.RowsAffected()
 
 	if rows == 0 {
-		return fmt.Errorf("%s: job not found", op)
+		return fmt.Errorf("%s: job not found", OpChangeStatus)
 	}
 
 	return nil
 }
 
-func (s *Storage) GetJob(jobID int) (Job, error) {
-	const op = "repository.pgx.GetJob"
+func (s *Storage) GetJob(ctx context.Context, jobID int) (jobDomain.Job, error) {
+	var job jobDomain.Job
 
-	var job Job
-
-	err := s.db.QueryRow(context.Background(), `
+	err := s.db.QueryRow(ctx, `
 		SELECT id, queue, payload, job_status, available_at, created_at
 		FROM jobs
 		WHERE id = $1
@@ -174,32 +154,28 @@ func (s *Storage) GetJob(jobID int) (Job, error) {
 		&job.AvailableAt,
 		&job.CreatedAt,
 	)
-
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Job{}, storage.ErrJobNotFound
+			return jobDomain.Job{}, jobDomain.ErrJobNotFound
 		}
-		return Job{}, fmt.Errorf("%s: %w", op, err)
+		return jobDomain.Job{}, fmt.Errorf("%s: %w", OpGetJob, err)
 	}
 
 	return job, nil
 }
 
-func (s *Storage) DeleteJob(jobID int) error {
-	const op = "repository.pgx.DeleteJob"
-
-	res, err := s.db.Exec(context.Background(), `
+func (s *Storage) DeleteJob(ctx context.Context, jobID int) error {
+	res, err := s.db.Exec(ctx, `
 		DELETE FROM jobs WHERE id = $1
 	`, jobID)
-
 	if err != nil {
-		return fmt.Errorf("%s: %w", op, err)
+		return fmt.Errorf("%s: %w", OpDeleteJob, err)
 	}
 
 	rows := res.RowsAffected()
 
 	if rows == 0 {
-		return storage.ErrJobNotFound
+		return jobDomain.ErrJobNotFound
 	}
 
 	return nil

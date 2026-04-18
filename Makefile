@@ -4,7 +4,7 @@ MIGRATIONS_PATH=./migrations
 
 # создать новую миграцию
 migrate-create:
-	migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq name=$(name)
+	migrate create -ext sql -dir $(MIGRATIONS_PATH) -seq $(name)
 
 # применить все миграции
 migrate-up:

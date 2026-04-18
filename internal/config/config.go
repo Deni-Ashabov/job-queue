@@ -9,9 +9,11 @@ import (
 )
 
 type Config struct {
-	Env        string `yaml:"env" env-default:"local" env-required:"true"`
-	DB         `yaml:"db"`
-	HTTPServer `yaml:"http_server"`
+	Env            string `yaml:"env" env-default:"local" env-required:"true"`
+	DB             `yaml:"db"`
+	HTTPServer     `yaml:"http_server"`
+	WorkersCount   int `env:"WORKERS_COUNT" default:"5"`
+	JobsBufferSize int `env:"JOBS_BUFFER_SIZE" default:"10"`
 }
 
 type DB struct {

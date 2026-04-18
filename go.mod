@@ -1,6 +1,6 @@
 module job-queue
 
-go 1.26.1
+go 1.26
 
 require (
 	github.com/fatih/color v1.19.0
