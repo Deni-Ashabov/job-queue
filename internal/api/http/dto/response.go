@@ -1,8 +1,11 @@
-package response
+package dto
 
 import (
+	"encoding/json"
 	"fmt"
+	"job-queue/internal/models"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 )
@@ -10,6 +13,24 @@ import (
 type Response struct {
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
+}
+
+type GetResponse struct {
+	Response
+	JobID       int64            `json:"id"`
+	Queue       models.QueueType `json:"queue"`
+	Payload     json.RawMessage  `json:"payload"`
+	JobStatus   string           `json:"job_status"`
+	AvailableAt time.Time        `json:"available_at"`
+	CreatedAt   time.Time        `json:"created_at"`
+}
+
+type SaveResponse struct {
+	Response
+	JobID       int64            `json:"id"`
+	Queue       models.QueueType `json:"queue"`
+	JobStatus   string           `json:"job_status"`
+	AvailableAt time.Time        `json:"available_at"`
 }
 
 const (

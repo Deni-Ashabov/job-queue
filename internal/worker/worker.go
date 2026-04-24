@@ -13,7 +13,7 @@ import (
 )
 
 type Storage interface {
-	FetchPendingJobs(ctx context.Context) ([]job.Job, error)
+	FetchAndLockJobs(ctx context.Context, fromStatus models.JobStatus, toStatus models.JobStatus, limit int) ([]job.Job, error)
 	ChangeStatus(ctx context.Context, jobID int64, status models.JobStatus) error
 }
 
@@ -54,7 +54,7 @@ func (w *Worker) Run(ctx context.Context, cfg *config.Config) {
 			return
 
 		default:
-			jobs, err := w.storage.FetchPendingJobs(ctx)
+			jobs, err := w.storage.FetchAndLockJobs(ctx, models.StatusProcessing, models.StatusPending, cfg.JobsBufferSize)
 			if err != nil {
 				w.log.Error("failed to fetch jobs", sl.Err(err))
 				time.Sleep(time.Second)

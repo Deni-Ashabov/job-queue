@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	resp "job-queue/internal/api/http/dto"
 	"job-queue/internal/api/http/handlers/job-queue/get"
 	"job-queue/internal/api/http/handlers/job-queue/get/mocks"
 	"job-queue/internal/domain/job"
@@ -87,7 +88,7 @@ func TestGetHandler(t *testing.T) {
 				tc.setup(jobGetMock)
 			}
 
-			handler := get.New(slogdiscard.Noop(), jobGetMock)
+			handler := get.New(slogdiscard.NoopLogger(), jobGetMock)
 
 			req := newGetReq(tc.jobID)
 
@@ -96,7 +97,7 @@ func TestGetHandler(t *testing.T) {
 
 			require.Equal(t, tc.status, rr.Code)
 
-			var resp get.Response
+			var resp resp.GetResponse
 			require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
 
 			if tc.status == http.StatusOK {

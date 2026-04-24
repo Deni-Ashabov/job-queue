@@ -1,31 +1,16 @@
 package save
 
 import (
-	"encoding/json"
+	"job-queue/internal/api/http/dto"
 	resp "job-queue/internal/api/http/dto"
 	"job-queue/internal/logger/sl"
-	"job-queue/internal/models"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 	"github.com/go-playground/validator/v10"
 )
-
-type Request struct {
-	Queue   models.QueueType `json:"queue" validate:"oneof=emails payment notification"`
-	Payload json.RawMessage  `json:"payload" validate:"required,json"`
-}
-
-type Response struct {
-	resp.Response
-	JobID       int64            `json:"id"`
-	Queue       models.QueueType `json:"queue"`
-	JobStatus   string           `json:"job_status"`
-	AvailableAt time.Time        `json:"available_at"`
-}
 
 const op = "handlers.job-queue.save.New"
 
@@ -36,10 +21,9 @@ func New(log *slog.Logger, jobSaver JobSaver) http.HandlerFunc {
 			slog.String("request_id", middleware.GetReqID(r.Context())),
 		)
 
-		var req Request
+		var req dto.SaveRequest
 
 		err := render.DecodeJSON(r.Body, &req)
-
 		if err != nil {
 			logger.Error("failed to decode request body", sl.Err(err))
 
@@ -61,7 +45,6 @@ func New(log *slog.Logger, jobSaver JobSaver) http.HandlerFunc {
 		}
 
 		job, err := jobSaver.SaveJob(r.Context(), req.Queue, req.Payload)
-
 		if err != nil {
 			logger.Error("failed to add job", sl.Err(err))
 
@@ -72,7 +55,7 @@ func New(log *slog.Logger, jobSaver JobSaver) http.HandlerFunc {
 
 		logger.Info("job added", slog.Int64("id", job.ID))
 
-		render.JSON(w, r, Response{
+		render.JSON(w, r, dto.SaveResponse{
 			Response:    resp.OK(),
 			JobID:       job.ID,
 			Queue:       job.Queue,

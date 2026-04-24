@@ -1,31 +1,18 @@
 package get
 
 import (
-	"encoding/json"
 	"errors"
 	resp "job-queue/internal/api/http/dto"
 	jobDomain "job-queue/internal/domain/job"
 	"job-queue/internal/logger/sl"
-	"job-queue/internal/models"
 	"log/slog"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
-
-type Response struct {
-	resp.Response
-	JobID       int64            `json:"id"`
-	Queue       models.QueueType `json:"queue"`
-	Payload     json.RawMessage  `json:"payload"`
-	JobStatus   string           `json:"job_status"`
-	AvailableAt time.Time        `json:"available_at"`
-	CreatedAt   time.Time        `json:"created_at"`
-}
 
 const op = "handlers.job-queue.get.New"
 
@@ -67,7 +54,7 @@ func New(log *slog.Logger, jobGet JobGet) http.HandlerFunc {
 			return
 		}
 
-		render.JSON(w, r, Response{
+		render.JSON(w, r, resp.GetResponse{
 			Response:    resp.OK(),
 			JobID:       job.ID,
 			Queue:       job.Queue,

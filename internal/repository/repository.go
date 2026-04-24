@@ -1,4 +1,4 @@
-package postgres
+package repository
 
 import (
 	"context"
@@ -19,7 +19,7 @@ const (
 	OpGetJob           = "repository.pgx.GetJob"
 	OpDeleteJob        = "repository.pgx.DeleteJob"
 	OpChangeStatus     = "repository.pgx.ChangeStatus"
-	OpFetchPendingJobs = "repository.pgx.FetchPendingJobs"
+	OpFetchAndLockJobs = "repository.pgx.FetchAndLockJobs"
 )
 
 type Storage struct {
@@ -75,21 +75,27 @@ func (s *Storage) SaveJob(ctx context.Context, queue models.QueueType, payload j
 	return job, nil
 }
 
-func (s *Storage) FetchPendingJobs(ctx context.Context) ([]jobDomain.Job, error) {
+func (s *Storage) FetchAndLockJobs(
+	ctx context.Context,
+	fromStatus models.JobStatus,
+	toStatus models.JobStatus,
+	limit int,
+) ([]jobDomain.Job, error) {
 	rows, err := s.db.Query(ctx, `
 		UPDATE jobs
-		SET job_status = 'processing'
+		SET job_status = $2
 		WHERE id IN (
 			SELECT id FROM jobs
-			WHERE job_status = 'pending'
+			WHERE job_status = $1
 			AND available_at <= now()
-			LIMIT 10
+			ORDER BY available_at
+			LIMIT $3
 			FOR UPDATE SKIP LOCKED
 		)
 		RETURNING id, queue, payload, job_status, available_at;
-	`)
+	`, fromStatus, toStatus, limit)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", OpFetchPendingJobs, err)
+		return nil, fmt.Errorf("%s: %w", OpFetchAndLockJobs, err)
 	}
 
 	defer rows.Close()

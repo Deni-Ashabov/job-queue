@@ -5,7 +5,7 @@ import (
 	"job-queue/internal/config"
 	"job-queue/internal/logger/handlers/setuplogger"
 	"job-queue/internal/logger/sl"
-	"job-queue/internal/repository/postgres"
+	"job-queue/internal/repository"
 	"job-queue/internal/worker"
 	"log/slog"
 	"os"
@@ -30,7 +30,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	storage, err := postgres.New(ctx, cfg.DB.DBUrl)
+	storage, err := repository.New(ctx, cfg.DB.DBUrl)
 	if err != nil {
 		log.Error("failed to connect", sl.Err(err))
 		os.Exit(1)

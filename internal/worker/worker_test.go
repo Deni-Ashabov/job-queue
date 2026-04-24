@@ -101,7 +101,7 @@ func TestProcessJob(t *testing.T) {
 			t.Parallel()
 
 			storage := mocks.NewStorage(t)
-			w := worker.New(storage, slogdiscard.Noop())
+			w := worker.New(storage, slogdiscard.NoopLogger())
 
 			storage.On("ChangeStatus",
 				mock.MatchedBy(func(ctx context.Context) bool {

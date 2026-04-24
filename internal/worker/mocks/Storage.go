@@ -34,29 +34,29 @@ func (_m *Storage) ChangeStatus(ctx context.Context, jobID int64, status models.
 	return r0
 }
 
-// FetchPendingJobs provides a mock function with given fields: ctx
-func (_m *Storage) FetchPendingJobs(ctx context.Context) ([]job.Job, error) {
-	ret := _m.Called(ctx)
+// FetchAndLockJobs provides a mock function with given fields: ctx, fromStatus, toStatus, limit
+func (_m *Storage) FetchAndLockJobs(ctx context.Context, fromStatus models.JobStatus, toStatus models.JobStatus, limit int) ([]job.Job, error) {
+	ret := _m.Called(ctx, fromStatus, toStatus, limit)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FetchPendingJobs")
+		panic("no return value specified for FetchAndLockJobs")
 	}
 
 	var r0 []job.Job
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) ([]job.Job, error)); ok {
-		return rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, models.JobStatus, models.JobStatus, int) ([]job.Job, error)); ok {
+		return rf(ctx, fromStatus, toStatus, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) []job.Job); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, models.JobStatus, models.JobStatus, int) []job.Job); ok {
+		r0 = rf(ctx, fromStatus, toStatus, limit)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]job.Job)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, models.JobStatus, models.JobStatus, int) error); ok {
+		r1 = rf(ctx, fromStatus, toStatus, limit)
 	} else {
 		r1 = ret.Error(1)
 	}

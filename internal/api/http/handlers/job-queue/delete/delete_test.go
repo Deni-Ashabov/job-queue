@@ -20,6 +20,7 @@ import (
 func TestDeleteHandler(t *testing.T) {
 	cases := []struct {
 		name      string
+		body      string
 		jobID     int
 		status    int
 		respError string
@@ -28,6 +29,7 @@ func TestDeleteHandler(t *testing.T) {
 		{
 			name:   "Success",
 			jobID:  1,
+			body:   "",
 			status: http.StatusNoContent,
 			setup: func(m *mocks.JobDelete) {
 				m.On("DeleteJob", mock.MatchedBy(func(ctx context.Context) bool {
@@ -40,6 +42,7 @@ func TestDeleteHandler(t *testing.T) {
 		{
 			name:   "Not found",
 			jobID:  0,
+			body:   "not found\n",
 			status: http.StatusNotFound,
 			setup: func(m *mocks.JobDelete) {
 				m.On("DeleteJob", mock.MatchedBy(func(ctx context.Context) bool {
@@ -52,6 +55,7 @@ func TestDeleteHandler(t *testing.T) {
 		{
 			name:   "Internal error",
 			jobID:  1,
+			body:   "internal error\n",
 			status: http.StatusInternalServerError,
 			setup: func(m *mocks.JobDelete) {
 				m.On("DeleteJob", mock.MatchedBy(func(ctx context.Context) bool {
@@ -75,7 +79,7 @@ func TestDeleteHandler(t *testing.T) {
 				tc.setup(jobDeleteMock)
 			}
 
-			handler := del.New(slogdiscard.Noop(), jobDeleteMock)
+			handler := del.New(slogdiscard.NoopLogger(), jobDeleteMock)
 
 			req := newDeleteReq(tc.jobID)
 
@@ -84,9 +88,7 @@ func TestDeleteHandler(t *testing.T) {
 
 			require.Equal(t, tc.status, rr.Code)
 
-			if tc.status == http.StatusNoContent {
-				require.Empty(t, rr.Body.String())
-			}
+			require.Equal(t, tc.body, rr.Body.String())
 		})
 	}
 }

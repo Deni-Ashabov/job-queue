@@ -2,22 +2,17 @@ package main
 
 import (
 	"context"
-	del "job-queue/internal/api/http/handlers/job-queue/delete"
-	"job-queue/internal/api/http/handlers/job-queue/get"
-	"job-queue/internal/api/http/handlers/job-queue/save"
-	"job-queue/internal/api/http/middleware/logger"
+	httpapi "job-queue/internal/api/http"
 	"job-queue/internal/config"
 	"job-queue/internal/logger/handlers/setuplogger"
 	"job-queue/internal/logger/sl"
-	"job-queue/internal/repository/postgres"
+	"job-queue/internal/repository"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
 	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
 )
 
@@ -38,7 +33,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	storage, err := postgres.New(ctx, cfg.DB.DBUrl)
+	storage, err := repository.New(ctx, cfg.DB.DBUrl)
 	if err != nil {
 		log.Error("failed to connect", sl.Err(err))
 		os.Exit(1)
@@ -47,22 +42,7 @@ func main() {
 
 	log.Info("connected to db")
 
-	router := chi.NewRouter()
-
-	router.Use(middleware.RequestID)
-	router.Use(logger.New(log))
-	router.Use(middleware.Recoverer)
-
-	router.Route("/job", func(r chi.Router) {
-		r.Use(middleware.BasicAuth("job-queue", map[string]string{
-			cfg.HTTPServer.User: cfg.HTTPServer.Password,
-		}))
-
-		r.Post("/", save.New(log, storage))
-		r.Delete("/{jobID}", del.New(log, storage))
-	})
-
-	router.Get("/job/{jobID}", get.New(log, storage))
+	router := httpapi.NewRouter(log, storage, cfg)
 
 	log.Info("server starting", slog.String("address", cfg.HTTPServer.Address))
 

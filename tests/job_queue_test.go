@@ -3,7 +3,7 @@ package tests
 import (
 	"encoding/json"
 	"fmt"
-	"job-queue/internal/api/http/handlers/job-queue/save"
+	"job-queue/internal/api/http/dto"
 	"job-queue/internal/models"
 	"net/http"
 	"net/url"
@@ -47,7 +47,7 @@ func TestURLShortener_HappyPath(t *testing.T) {
 	e := httpexpect.Default(t, u.String())
 
 	e.POST("/job").
-		WithJSON(save.Request{
+		WithJSON(dto.SaveRequest{
 			Queue: "emails",
 			Payload: json.RawMessage(`{
 				"to": "user1",
@@ -128,7 +128,7 @@ func TestURLShortener_SaveJob(t *testing.T) {
 					JSON().Object()
 			} else {
 				resp = e.POST("/job").
-					WithJSON(save.Request{
+					WithJSON(dto.SaveRequest{
 						Queue:   models.QueueType(tc.queue),
 						Payload: tc.payload,
 					}).

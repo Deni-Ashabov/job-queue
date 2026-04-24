@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-
+	"job-queue/internal/api/http/dto"
 	"job-queue/internal/api/http/handlers/job-queue/save"
 	"job-queue/internal/api/http/handlers/job-queue/save/mocks"
 	"job-queue/internal/domain/job"
@@ -105,9 +105,9 @@ func TestSaveHandler(t *testing.T) {
 				tc.setup(jobServerMock)
 			}
 
-			handler := save.New(slogdiscard.Noop(), jobServerMock)
+			handler := save.New(slogdiscard.NoopLogger(), jobServerMock)
 
-			inputBytes, err := json.Marshal(map[string]any{
+			inputBytes, _ := json.Marshal(map[string]any{
 				"queue":   tc.queue,
 				"payload": tc.payload,
 			})
@@ -123,7 +123,7 @@ func TestSaveHandler(t *testing.T) {
 
 			body := rr.Body.String()
 
-			var resp save.Response
+			var resp dto.SaveResponse
 
 			require.NoError(t, json.Unmarshal([]byte(body), &resp))
 

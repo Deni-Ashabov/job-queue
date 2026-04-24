@@ -33,14 +33,16 @@ func New(log *slog.Logger, deleteJob JobDelete) http.HandlerFunc {
 			return
 		}
 
+		logger = logger.With(slog.Int("jobID", jobID))
+
 		if err := deleteJob.DeleteJob(r.Context(), jobID); err != nil {
 			if errors.Is(err, job.ErrJobNotFound) {
-				logger.Info("job not found", slog.String("jobID", jobIDParam))
+				logger.Info("job not found", slog.Int("jobID", jobID))
 				http.Error(w, "not found", http.StatusNotFound)
 				return
 			}
 
-			logger.Error("failed to delete job", sl.Err(err))
+			logger.Error("failed to delete job", slog.Int("jobID", jobID), sl.Err(err))
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
